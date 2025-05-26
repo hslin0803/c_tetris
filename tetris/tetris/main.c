@@ -94,19 +94,27 @@ void game();
 void input();
 void clearScreen(int milliseconds);
 void update();
+int initGame();
 
 int getInput();
 
-void moveBlock(int dir);
+void moveBlock(int dirX, int dirY);
+void clearBlock(int prevPosX, int prevPosY);
 void forwardRotateBlock(int block[4][4]);
 void reverseRotateBlock(int block[4][4]);
-void insertBlock();
+int checkWall(int dirX, int dirY);
 
 /* 여기까지 선언용 함수*/
 
-/* 기본 세팅 */
-int startPosX = 4;
-int startPosY = 0;
+/* 이전 위치 */
+int prevPosX = 0;
+int prevPosY = 0;
+
+/* 현재 위치 */
+int nowPosX = 4;
+int nowPosY = 0;
+
+int testBlock = 0; // I 블럭으로 고정
 
 int main() {
 	initGame();
@@ -135,32 +143,57 @@ void game() {
 
 void input() {
 	int key = getInput();
-	int direction = 0;
+
+	int dirX = 0;
+	int dirY = 0;
+
+	int isWall = 0;
+
+	// 이전위치 저장
+	prevPosX = nowPosX;
+	prevPosY = nowPosY;
 
 	switch (key) {
 	case KEY_UP:
+		// forwardRotateBlock(); // 블럭 회전
 		printf("key : UP");
 		break;
 	case KEY_DOWN:
-		printf("key : DOWN");
+		dirY = 1;
+		isWall = checkWall(dirX, dirY); // 벽 충돌 확인
+		if (isWall == 1) {
+			clearBlock(prevPosX, prevPosY); // 이전위치 지우기
+			moveBlock(dirX, dirY); // 블럭 이동
+			printf("key : DOWN");
+		}
 		break;
 	case KEY_LEFT:
-		direction = -1;
-		moveBlock(direction);
-		printf("key : LEFT");
+		dirX = -1;
+		isWall = checkWall(dirX, dirY); // 벽 충돌 확인
+		if (isWall == 1) {
+			clearBlock(prevPosX, prevPosY); // 이전위치 지우기
+			moveBlock(dirX, dirY); // 블럭 이동
+			printf("key : LEFT");
+		}
 		break;
 	case KEY_RIGHT:
-		direction = 1;
-		moveBlock(direction);
-		printf("key : RIGHT");
+		dirX = 1;
+		isWall = checkWall(dirX, dirY); // 벽 충돌 확인
+		if (isWall == 1) {
+			clearBlock(prevPosX, prevPosY); // 이전위치 지우기
+			moveBlock(dirX, dirY); // 블럭 이동
+			printf("key : RIGHT");
+		}
 		break;
 	case KEY_SPACE:
 		printf("key : SPACE");
 		break;
 	case KEY_Z:
+		// forwardRotateBlock(); // 블럭 회전
 		printf("key : Z");
 		break;
 	case KEY_X:
+		// forwardRotateBlock(); // 블럭 회전
 		printf("key : X");
 		break;
 	case KEY_C:
@@ -169,10 +202,11 @@ void input() {
 	default:
 		break;
 	}
+	printf("\nnowPosX = %d, nowPosY = %d\nprevPosX = %d, prevPosY = %d", nowPosX, nowPosY, prevPosX, prevPosY);
 }
 
 void update() {
-	insertBlock();
+
 }
 
 void drawField() { // 필드 그리기
@@ -256,16 +290,54 @@ void reverseRotateBlock(int block[4][4]) { // 역방향 회전 (-90도, 왼쪽 회전)
 	}
 }
 
-void insertBlock() {
-	int testBlock = 0; // I 블럭으로 고정
+void moveBlock(int dirX, int dirY) {
+	// 현재 위치 갱신
+	nowPosX += dirX;
+	nowPosY += dirY;
 
 	for (int y = 0; y < 4; y++) {
 		for (int x = 0; x < 4; x++) {
-			field[y + startPosY][x + startPosX] = blocks[testBlock][y][x];
+			if (blocks[testBlock][y][x] == BLOCK) {
+				field[y + nowPosY][x + nowPosX] = BLOCK;
+			}
 		}
 	}
 }
 
-void moveBlock(int dir) {
-	
+void clearBlock(int prevPosX, int prevPosY) { // 이전 위치 블럭 지우기
+	for (int y = 0; y < 4;y++) {
+		for (int x = 0; x < 4; x++) {
+			if (blocks[testBlock][y][x] == BLOCK) {
+				if (field[y + prevPosY][x + prevPosX] == BLOCK) {
+					field[y + prevPosY][x + prevPosX] = EMPTY;
+				}
+			}
+		}
+	}
+}
+
+int checkWall(int dirX, int dirY) { // 이동하기전 다음 위치 벽인지 확인
+	int nextPosX = nowPosX + dirX;
+	int nextPosY = nowPosY + dirY;
+
+	for (int y = 0; y < 4; y++) {
+		for (int x = 0; x < 4; x++) {
+			if (blocks[testBlock][y][x] == BLOCK) {
+				int fieldX = nextPosX + x;
+				int fieldY = nextPosY + y;
+
+				// 배열 범위 초과 방지
+				if (fieldY >= FIELD_HEIGHT || fieldY < 0 || fieldX >= FIELD_WIDTH || fieldX < 0) {
+					printf("\n 배열 범위 초과! (%d, %d)\n", fieldX, fieldY);
+					return -1;
+				}
+
+				if (field[fieldY][fieldX] == WALL) {
+					printf("\n 불가능! (%d, %d)\n", fieldX, fieldY);
+					return -1;
+				}
+			}
+		}
+	}
+	return 1;
 }
