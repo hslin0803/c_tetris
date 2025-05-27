@@ -8,7 +8,8 @@
 
 #define EMPTY 0
 #define BLOCK 1
-#define WALL 2
+#define FIXED_BLOCK 2
+#define WALL 3
 
 #define KEY_UP 72
 #define KEY_DOWN 80
@@ -33,6 +34,7 @@
 int field[FIELD_HEIGHT][FIELD_WIDTH] = { 0 };
 
 int isGameOver = 0;
+int isBlockSpawn = 0; // 블럭이 스폰되면 1, 아니면 0
 
 /* Block */
 int blocks[7][4][4] = {
@@ -86,6 +88,9 @@ int blocks[7][4][4] = {
 		{0, 0, 0, 0}
 	}
 };
+int nowBlocks[4][4];
+
+int nowBlock;
 
 /* 선언용 함수 */
 void drawField();
@@ -93,7 +98,11 @@ void initField();
 void game();
 void input();
 void clearScreen(int milliseconds);
-void update();
+void fallBlock();
+void changeFixedBlock();
+void copyBlock();
+void spawnBlock();
+
 int initGame();
 
 int getInput();
@@ -104,7 +113,7 @@ void forwardRotateBlock(int block[4][4]);
 void reverseRotateBlock(int block[4][4]);
 int checkWall(int dirX, int dirY);
 
-/* 여기까지 선언용 함수*/
+/* 여기까지 선언용 함수 */
 
 /* 이전 위치 */
 int prevPosX = 0;
@@ -114,7 +123,8 @@ int prevPosY = 0;
 int nowPosX = 4;
 int nowPosY = 0;
 
-int testBlock = 0; // I 블럭으로 고정
+int gravityCounter = 0;
+int dropInterval = 20; // 20프레임마다 낙하
 
 int main() {
 	initGame();
@@ -134,9 +144,15 @@ int initGame() {
 
 void game() {
 	drawField(); // 필드 그리기
+	spawnBlock(); // 블럭 스폰
 
 	input(); // 입력 설정 관련
-	update(); // 게임 관련 업데이트 등
+
+	gravityCounter++;
+	if (gravityCounter >= dropInterval) {
+		fallBlock();
+		gravityCounter = 0;
+	}
 
 	clearScreen(100); // 화면 지우기
 }
@@ -155,7 +171,8 @@ void input() {
 
 	switch (key) {
 	case KEY_UP:
-		// forwardRotateBlock(); // 블럭 회전
+		clearBlock(prevPosX, prevPosY); // 이전위치 지우기
+		forwardRotateBlock(nowBlocks); // 블럭 회전
 		printf("key : UP");
 		break;
 	case KEY_DOWN:
@@ -189,11 +206,13 @@ void input() {
 		printf("key : SPACE");
 		break;
 	case KEY_Z:
-		// forwardRotateBlock(); // 블럭 회전
+		clearBlock(prevPosX, prevPosY); // 이전위치 지우기
+		reverseRotateBlock(nowBlocks); // 블럭 회전
 		printf("key : Z");
 		break;
 	case KEY_X:
-		// forwardRotateBlock(); // 블럭 회전
+		clearBlock(prevPosX, prevPosY); // 이전위치 지우기
+		forwardRotateBlock(nowBlocks); // 블럭 회전
 		printf("key : X");
 		break;
 	case KEY_C:
@@ -203,10 +222,6 @@ void input() {
 		break;
 	}
 	printf("\nnowPosX = %d, nowPosY = %d\nprevPosX = %d, prevPosY = %d", nowPosX, nowPosY, prevPosX, prevPosY);
-}
-
-void update() {
-
 }
 
 void drawField() { // 필드 그리기
@@ -220,6 +235,9 @@ void drawField() { // 필드 그리기
 			}
 			else if (field[y][x] == WALL) {
 				printf("▣");
+			}
+			else if (field[y][x] == FIXED_BLOCK) {
+				printf("♠");
 			}
 		}
 		printf("\n");
@@ -278,7 +296,7 @@ void reverseRotateBlock(int block[4][4]) { // 역방향 회전 (-90도, 왼쪽 회전)
 	// -90도 회전
 	for (int i = 0; i < 4; i++) {
 		for (int j = 0; j < 4; j++) {
-			temp[3 - i][j] = block[i][j];
+			temp[3 - j][i] = block[i][j];
 		}
 	}
 
@@ -297,7 +315,7 @@ void moveBlock(int dirX, int dirY) {
 
 	for (int y = 0; y < 4; y++) {
 		for (int x = 0; x < 4; x++) {
-			if (blocks[testBlock][y][x] == BLOCK) {
+			if (nowBlocks[y][x] == BLOCK) {
 				field[y + nowPosY][x + nowPosX] = BLOCK;
 			}
 		}
@@ -307,7 +325,7 @@ void moveBlock(int dirX, int dirY) {
 void clearBlock(int prevPosX, int prevPosY) { // 이전 위치 블럭 지우기
 	for (int y = 0; y < 4;y++) {
 		for (int x = 0; x < 4; x++) {
-			if (blocks[testBlock][y][x] == BLOCK) {
+			if (nowBlocks[y][x] == BLOCK) {
 				if (field[y + prevPosY][x + prevPosX] == BLOCK) {
 					field[y + prevPosY][x + prevPosX] = EMPTY;
 				}
@@ -322,7 +340,7 @@ int checkWall(int dirX, int dirY) { // 이동하기전 다음 위치 벽인지 확인
 
 	for (int y = 0; y < 4; y++) {
 		for (int x = 0; x < 4; x++) {
-			if (blocks[testBlock][y][x] == BLOCK) {
+			if (nowBlocks[y][x] == BLOCK) {
 				int fieldX = nextPosX + x;
 				int fieldY = nextPosY + y;
 
@@ -340,4 +358,51 @@ int checkWall(int dirX, int dirY) { // 이동하기전 다음 위치 벽인지 확인
 		}
 	}
 	return 1;
+}
+
+void fallBlock() {
+	int dirX = 0;
+	int dirY = 1;
+
+	if (checkWall(dirX, dirY) == 1) {
+		clearBlock(nowPosX, nowPosY);
+		moveBlock(dirX, dirY);
+	}
+	else {
+		changeFixedBlock();
+		printf("\n 블럭 고정! \n");
+	}
+}
+
+void changeFixedBlock() {
+	for (int y = 0; y < 4; y++) {
+		for (int x = 0; x < 4; x++) {
+			if (nowBlocks[y][x] == BLOCK) {
+				field[y + nowPosY][x + nowPosX] = FIXED_BLOCK;
+			}
+		}
+	}
+}
+
+void copyBlock() {
+	for (int y = 0; y < 4; y++) {
+		for (int x = 0; x < 4; x++) {
+			nowBlocks[y][x] = blocks[nowBlock][y][x];
+		}
+	}
+}
+
+void spawnBlock() {
+	if (isBlockSpawn == 0) { // 0이 아니면 블럭 생성 후 카피
+		nowBlock = 3;
+		// nowBlock = rand() % 7; // 임시로 세팅(추후 알고리즘 통해서 tetrio처럼 넥스트 작업 예정)
+		nowPosX = 4;
+		nowPosY = 0;
+		copyBlock();
+		
+		isBlockSpawn = 1;
+	}
+	else {
+		return;
+	}
 }
