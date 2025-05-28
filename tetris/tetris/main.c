@@ -35,6 +35,7 @@ int field[FIELD_HEIGHT][FIELD_WIDTH] = { 0 };
 
 int isGameOver = 0;
 int isBlockSpawn = 0; // 블럭이 스폰되면 1, 아니면 0
+int isStop = 0; // 움직일수 있으면 0, 아닐경우 1
 
 /* Block */
 int blocks[7][4][4] = {
@@ -102,6 +103,9 @@ void fallBlock();
 void changeFixedBlock();
 void copyBlock();
 void spawnBlock();
+void checkLine();
+void deleteLine(int lineY);
+void moveLine(int lineY);
 
 int initGame();
 
@@ -153,6 +157,7 @@ void game() {
 		fallBlock();
 		gravityCounter = 0;
 	}
+	checkLine();
 
 	clearScreen(100); // 화면 지우기
 }
@@ -350,7 +355,7 @@ int checkWall(int dirX, int dirY) { // 이동하기전 다음 위치 벽인지 확인
 					return -1;
 				}
 
-				if (field[fieldY][fieldX] == WALL) {
+				if (field[fieldY][fieldX] == WALL || field[fieldY][fieldX] == FIXED_BLOCK) {
 					printf("\n 불가능! (%d, %d)\n", fieldX, fieldY);
 					return -1;
 				}
@@ -375,10 +380,14 @@ void fallBlock() {
 }
 
 void changeFixedBlock() {
-	for (int y = 0; y < 4; y++) {
-		for (int x = 0; x < 4; x++) {
-			if (nowBlocks[y][x] == BLOCK) {
-				field[y + nowPosY][x + nowPosX] = FIXED_BLOCK;
+	if (isStop == 1) {
+		for (int y = 0; y < 4; y++) {
+			for (int x = 0; x < 4; x++) {
+				if (nowBlocks[y][x] == BLOCK) {
+					field[y + nowPosY][x + nowPosX] = FIXED_BLOCK;
+					isStop = 0;
+					isBlockSpawn = 0;
+				}
 			}
 		}
 	}
@@ -394,15 +403,51 @@ void copyBlock() {
 
 void spawnBlock() {
 	if (isBlockSpawn == 0) { // 0이 아니면 블럭 생성 후 카피
-		nowBlock = 3;
-		// nowBlock = rand() % 7; // 임시로 세팅(추후 알고리즘 통해서 tetrio처럼 넥스트 작업 예정)
+		nowBlock = rand() % 7; // 임시로 세팅(추후 알고리즘 통해서 tetrio처럼 넥스트 작업 예정)
 		nowPosX = 4;
 		nowPosY = 0;
 		copyBlock();
-		
+
+		isStop = 0;
 		isBlockSpawn = 1;
 	}
 	else {
+		isBlockSpawn = 1;
+		isStop = 1;
 		return;
+	}
+}
+
+void checkLine() {
+	for (int y = FIELD_HEIGHT - 1; y >= 0; y--) {
+		int blockCount = 0;
+		for (int x = 1; x < FIELD_WIDTH - 1; x++) {
+			if (field[y][x] == FIXED_BLOCK) {
+				blockCount++;
+				if (blockCount == 10) {
+					// 줄 삭제후 그 아래까지 이동
+					deleteLine(y);
+					moveLine(y);
+				}
+			}
+		}
+	}
+}
+
+void deleteLine(int lineY) {
+	for (int x = 1; x < FIELD_WIDTH - 1; x++) {
+		field[lineY][x] = EMPTY;
+	}
+}
+
+void moveLine(int lineY) {
+	for (int y = lineY; y > 0; y--) {
+		for (int x = 0;x < FIELD_WIDTH - 1; x++) {
+			field[y][x] = field[y - 1][x];
+		}
+	}
+
+	for (int x = 1; x < FIELD_WIDTH - 1; x++) {
+		field[0][x] = EMPTY;
 	}
 }
