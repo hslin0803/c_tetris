@@ -10,6 +10,7 @@
 #define BLOCK 1
 #define FIXED_BLOCK 2
 #define WALL 3
+#define GHOST_BLOCK 4
 
 #define KEY_UP 72
 #define KEY_DOWN 80
@@ -106,16 +107,20 @@ void spawnBlock();
 void checkLine();
 void deleteLine(int lineY);
 void moveLine(int lineY);
+void insertGhostBlock();
+void hardDrop();
 
 int initGame();
 
 int getInput();
 
 void moveBlock(int dirX, int dirY);
-void clearBlock(int prevPosX, int prevPosY);
+void clearBlock();
 void forwardRotateBlock(int block[4][4]);
 void reverseRotateBlock(int block[4][4]);
 int checkWall(int dirX, int dirY);
+void gotoxy(int x, int y);
+void hideCursor();
 
 /* 여기까지 선언용 함수 */
 
@@ -127,10 +132,15 @@ int prevPosY = 0;
 int nowPosX = 4;
 int nowPosY = 0;
 
+// 고스트 위치
+int ghostY;
+int ghostX;
+
 int gravityCounter = 0;
 int dropInterval = 20; // 20프레임마다 낙하
 
 int main() {
+	hideCursor(); // 콘솔 커서 숨기기
 	initGame();
 
 	while (!isGameOver) {
@@ -147,9 +157,11 @@ int initGame() {
 }
 
 void game() {
-	drawField(); // 필드 그리기
+	clearBlock(); // 블럭 지우기
 	spawnBlock(); // 블럭 스폰
-
+	insertGhostBlock(); // 고스트블럭 삽입
+	moveBlock(0, 0);
+	drawField(); // 필드 그리기
 	input(); // 입력 설정 관련
 
 	gravityCounter++;
@@ -176,7 +188,6 @@ void input() {
 
 	switch (key) {
 	case KEY_UP:
-		clearBlock(prevPosX, prevPosY); // 이전위치 지우기
 		forwardRotateBlock(nowBlocks); // 블럭 회전
 		printf("key : UP");
 		break;
@@ -184,7 +195,6 @@ void input() {
 		dirY = 1;
 		isWall = checkWall(dirX, dirY); // 벽 충돌 확인
 		if (isWall == 1) {
-			clearBlock(prevPosX, prevPosY); // 이전위치 지우기
 			moveBlock(dirX, dirY); // 블럭 이동
 			printf("key : DOWN");
 		}
@@ -193,7 +203,6 @@ void input() {
 		dirX = -1;
 		isWall = checkWall(dirX, dirY); // 벽 충돌 확인
 		if (isWall == 1) {
-			clearBlock(prevPosX, prevPosY); // 이전위치 지우기
 			moveBlock(dirX, dirY); // 블럭 이동
 			printf("key : LEFT");
 		}
@@ -202,21 +211,19 @@ void input() {
 		dirX = 1;
 		isWall = checkWall(dirX, dirY); // 벽 충돌 확인
 		if (isWall == 1) {
-			clearBlock(prevPosX, prevPosY); // 이전위치 지우기
 			moveBlock(dirX, dirY); // 블럭 이동
 			printf("key : RIGHT");
 		}
 		break;
 	case KEY_SPACE:
+		hardDrop();
 		printf("key : SPACE");
 		break;
 	case KEY_Z:
-		clearBlock(prevPosX, prevPosY); // 이전위치 지우기
 		reverseRotateBlock(nowBlocks); // 블럭 회전
 		printf("key : Z");
 		break;
 	case KEY_X:
-		clearBlock(prevPosX, prevPosY); // 이전위치 지우기
 		forwardRotateBlock(nowBlocks); // 블럭 회전
 		printf("key : X");
 		break;
@@ -243,6 +250,9 @@ void drawField() { // 필드 그리기
 			}
 			else if (field[y][x] == FIXED_BLOCK) {
 				printf("♠");
+			}
+			else if (field[y][x] == GHOST_BLOCK) {
+				printf("□");
 			}
 		}
 		printf("\n");
@@ -273,8 +283,9 @@ int getInput() {
 }
 
 void clearScreen(int milliseconds) {
-	Sleep(milliseconds);
-	system("cls");
+	/*Sleep(milliseconds);
+	system("cls");*/
+	gotoxy(0, 0);
 }
 
 void forwardRotateBlock(int block[4][4]) { // 정방향 회전(90도, 오른쪽 회전)
@@ -327,13 +338,11 @@ void moveBlock(int dirX, int dirY) {
 	}
 }
 
-void clearBlock(int prevPosX, int prevPosY) { // 이전 위치 블럭 지우기
-	for (int y = 0; y < 4;y++) {
-		for (int x = 0; x < 4; x++) {
-			if (nowBlocks[y][x] == BLOCK) {
-				if (field[y + prevPosY][x + prevPosX] == BLOCK) {
-					field[y + prevPosY][x + prevPosX] = EMPTY;
-				}
+void clearBlock() { // 현재 블럭, 고스트 블럭 지우기
+	for (int y = 0; y < FIELD_HEIGHT;y++) {
+		for (int x = 0; x < FIELD_WIDTH; x++) {
+			if (field[y][x] == BLOCK || field[y][x] == GHOST_BLOCK) {
+				field[y][x] = EMPTY;
 			}
 		}
 	}
@@ -370,7 +379,6 @@ void fallBlock() {
 	int dirY = 1;
 
 	if (checkWall(dirX, dirY) == 1) {
-		clearBlock(nowPosX, nowPosY);
 		moveBlock(dirX, dirY);
 	}
 	else {
@@ -406,6 +414,7 @@ void spawnBlock() {
 		nowBlock = rand() % 7; // 임시로 세팅(추후 알고리즘 통해서 tetrio처럼 넥스트 작업 예정)
 		nowPosX = 4;
 		nowPosY = 0;
+
 		copyBlock();
 
 		isStop = 0;
@@ -450,4 +459,71 @@ void moveLine(int lineY) {
 	for (int x = 1; x < FIELD_WIDTH - 1; x++) {
 		field[0][x] = EMPTY;
 	}
+}
+
+void insertGhostBlock() {
+	int minDrop = FIELD_HEIGHT;
+
+	for (int y = 0; y < 4; y++) {
+		for (int x = 0; x < 4; x++) {
+			if (nowBlocks[y][x] == BLOCK) {
+				int startY = nowPosY + y;
+				int fieldX = nowPosX + x;
+				int drop = 0;
+
+				while (1) {
+					int newY = startY + drop + 1;
+					if (newY >= FIELD_HEIGHT || field[newY][fieldX] == WALL || field[newY][fieldX] == FIXED_BLOCK) {
+						break;
+					}
+					drop++;
+				}
+
+				if (drop < minDrop) {
+					minDrop = drop;
+				}
+			}
+		}
+	}
+
+	// 고스트 블럭 출력
+	for (int y = 0; y < 4; y++) {
+		for (int x = 0; x < 4; x++) {
+			if (nowBlocks[y][x] == BLOCK) {
+				int ghostY = nowPosY + y + minDrop;
+				int ghostX = nowPosX + x;
+
+				if (field[ghostY][ghostX] == EMPTY) {
+					field[ghostY][ghostX] = GHOST_BLOCK;
+				}
+			}
+		}
+	}
+}
+
+void hardDrop() {
+	for (int y = 0; y < FIELD_HEIGHT; y++) {
+		for (int x = 0; x < FIELD_WIDTH; x++) {
+			if (field[y][x] == GHOST_BLOCK) {
+				field[y][x] = FIXED_BLOCK;
+			}
+		}
+	}
+
+	isBlockSpawn = 0;
+	isStop = 0;
+}
+
+void gotoxy(int x, int y) {
+	COORD pos = { x,y };
+	SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), pos);
+}
+
+void hideCursor() {
+	HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+	CONSOLE_CURSOR_INFO cursorInfo;
+
+	GetConsoleCursorInfo(hConsole, &cursorInfo);   // 현재 커서 정보 가져오기
+	cursorInfo.bVisible = FALSE;                   // 커서 안 보이게 설정
+	SetConsoleCursorInfo(hConsole, &cursorInfo);   // 설정 적용
 }
