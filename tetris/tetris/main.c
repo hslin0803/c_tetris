@@ -21,6 +21,8 @@
 #define KEY_X 120
 #define KEY_C 99
 
+#define NEXT_SIZE 3
+
 /*
 * 상(오른쪽으로 회전)	 72
 * 하(소프트 드랍)	 80
@@ -34,9 +36,14 @@
 
 int field[FIELD_HEIGHT][FIELD_WIDTH] = { 0 };
 
+int nextQueue[14]; // 7개씩 2세트
+int queueIndex = 0;
+int queueCount = 0;
+
 int isGameOver = 0;
 int isBlockSpawn = 0; // 블럭이 스폰되면 1, 아니면 0
 int isStop = 0; // 움직일수 있으면 0, 아닐경우 1
+int isHold = 0; // 홀드 가능일 때 0, 홀드를 이미 했을 경우 1
 
 /* Block */
 int blocks[7][4][4] = {
@@ -93,6 +100,7 @@ int blocks[7][4][4] = {
 int nowBlocks[4][4];
 
 int nowBlock;
+int holdBlock = -1;
 
 /* 선언용 함수 */
 void drawField();
@@ -109,6 +117,12 @@ void deleteLine(int lineY);
 void moveLine(int lineY);
 void insertGhostBlock();
 void hardDrop();
+void addQueueBag();
+void drawNextBlocks();
+void changeHold();
+void drawHoldBlock();
+
+int getNextBlock();
 
 int initGame();
 
@@ -162,6 +176,8 @@ void game() {
 	insertGhostBlock(); // 고스트블럭 삽입
 	moveBlock(0, 0);
 	drawField(); // 필드 그리기
+	drawNextBlocks(); // 넥스트 출력
+	drawHoldBlock(); // 홀드 블럭 출력
 	input(); // 입력 설정 관련
 
 	gravityCounter++;
@@ -228,12 +244,13 @@ void input() {
 		printf("key : X");
 		break;
 	case KEY_C:
+		changeHold(); // 홀드
 		printf("key : C");
 		break;
 	default:
 		break;
 	}
-	printf("\nnowPosX = %d, nowPosY = %d\nprevPosX = %d, prevPosY = %d", nowPosX, nowPosY, prevPosX, prevPosY);
+	//printf("\nnowPosX = %d, nowPosY = %d\nprevPosX = %d, prevPosY = %d", nowPosX, nowPosY, prevPosX, prevPosY);
 }
 
 void drawField() { // 필드 그리기
@@ -383,6 +400,7 @@ void fallBlock() {
 	}
 	else {
 		changeFixedBlock();
+		isHold = 0;
 		printf("\n 블럭 고정! \n");
 	}
 }
@@ -411,7 +429,8 @@ void copyBlock() {
 
 void spawnBlock() {
 	if (isBlockSpawn == 0) { // 0이 아니면 블럭 생성 후 카피
-		nowBlock = rand() % 7; // 임시로 세팅(추후 알고리즘 통해서 tetrio처럼 넥스트 작업 예정)
+		nowBlock = getNextBlock();
+		//nowBlock = rand() % 7; // 임시로 세팅(추후 알고리즘 통해서 tetrio처럼 넥스트 작업 예정)
 		nowPosX = 4;
 		nowPosY = 0;
 
@@ -512,6 +531,7 @@ void hardDrop() {
 
 	isBlockSpawn = 0;
 	isStop = 0;
+	isHold = 0;
 }
 
 void gotoxy(int x, int y) {
@@ -526,4 +546,109 @@ void hideCursor() {
 	GetConsoleCursorInfo(hConsole, &cursorInfo);   // 현재 커서 정보 가져오기
 	cursorInfo.bVisible = FALSE;                   // 커서 안 보이게 설정
 	SetConsoleCursorInfo(hConsole, &cursorInfo);   // 설정 적용
+}
+
+void addQueueBag() {
+	int temp[7];
+
+	// 초기 랜덤값 적용을 위한 초기화
+	for (int i = 0; i < 7; i++) {
+		temp[i] = i;
+	}
+
+	// 랜덤값 이용해서 섞기
+	for (int i = 6; i > 0; i--) {
+		int j = rand() % (i + 1);
+		int tmp = temp[i];
+		temp[i] = temp[j];
+		temp[j] = tmp;
+	}
+
+	// nextQueue에 추가
+	for (int i = 0; i < 7; i++) {
+		nextQueue[queueIndex + queueCount + i] = temp[i];
+	}
+	queueCount += 7;
+}
+
+int getNextBlock() {
+	// 넥스트 부족시 한세트 추가
+	if (queueCount < NEXT_SIZE + 1) {
+		addQueueBag();
+	}
+
+	int block = nextQueue[queueIndex++];
+	queueCount--;
+
+	return block;
+}
+
+void drawNextBlocks() {
+	int baseX = 25; // 필드 오른쪽 옆에 표시
+	int baseY = 2;  // Y 위치는 고정 (필요시 조정)
+
+	gotoxy(baseX, baseY - 1);
+	printf("[ Next ]");
+
+	for (int i = 0; i < NEXT_SIZE; i++) {
+		int blockType = nextQueue[queueIndex + i];
+
+		for (int y = 0; y < 4; y++) {
+			gotoxy(baseX, baseY + i * 5 + y); // 블럭 간 간격 5줄
+			for (int x = 0; x < 4; x++) {
+				if (blocks[blockType][y][x] == BLOCK)
+					printf("■");
+				else
+					printf("  ");
+			}
+		}
+	}
+}
+
+void changeHold() {
+	if (isHold == 0) {
+		if (holdBlock == -1) {
+			holdBlock = nowBlock;
+
+			isBlockSpawn = 0;
+			isStop = 0;
+			isHold = 1;
+		}
+		else if (holdBlock != -1) {
+			int temp;
+
+			temp = holdBlock;
+			holdBlock = nowBlock;
+			nowBlock = temp;
+
+			nowPosX = 4;
+			nowPosY = 0;
+			copyBlock();
+			isStop = 0;
+			isBlockSpawn = 1;
+			isHold = 1;
+		}
+	}
+}
+
+void drawHoldBlock() {
+	int baseX = 40; // 필드 오른쪽 옆에 표시
+	int baseY = 2;  // Y 위치는 고정 (필요시 조정)
+
+	gotoxy(baseX, baseY - 1);
+	printf("[ Hold ]");
+
+	int blockType = holdBlock;
+
+	if (blockType != -1) {
+		for (int y = 0; y < 4; y++) {
+			gotoxy(baseX, baseY + y); // 블럭 간 간격 5줄
+			for (int x = 0; x < 4; x++) {
+				if (blocks[blockType][y][x] == BLOCK)
+					printf("■");
+				else
+					printf("  ");
+			}
+		}
+	}
 }
